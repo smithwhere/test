@@ -17,7 +17,7 @@ export tmpINS=''
 export ipAddr=''
 export ipMask=''
 export ipGate=''
-export sshPORT='7866'
+export sshPORT=''
 export ipDNS='8.8.8.8 1.1.1.1'
 export Relese=''
 export ddMode='0'
@@ -406,7 +406,18 @@ if [[ "$linux_relese" == 'centos' ]]; then
     fi
   fi
 fi
-
+if [[ "$sshPORT" ]]; then
+	if [[ ! ${sshPORT} -ge "1" ]] || [[ ! ${sshPORT} -le "65535" ]] || [[ $(grep '^[[:digit:]]*$' <<<'${sshPORT}') ]]; then
+		sshPORT='22'
+	fi
+else
+	sshPORT=$(grep -Ei "^port|^#port" /etc/ssh/sshd_config | head -n 1 | awk -F' ' '{print $2}')
+	[[ "$sshPORT" == "" ]] && sshPORT=$(netstat -anp | grep -i 'sshd: root' | grep -iw 'tcp' | awk '{print $4}' | head -n 1 | cut -d':' -f'2')
+	[[ "$sshPORT" == "" ]] && sshPORT=$(netstat -anp | grep -i 'sshd: root' | grep -iw 'tcp6' | awk '{print $4}' | head -n 1 | awk -F':' '{print $NF}')
+	if [[ "$sshPORT" == "" ]] || [[ ! ${sshPORT} -ge "1" ]] || [[ ! ${sshPORT} -le "65535" ]] || [[ $(grep '^[[:digit:]]*$' <<<'${sshPORT}') ]]; then
+		sshPORT='22'
+	fi
+fi
 echo -e "\n[\033[33m$Relese\033[0m] [\033[33m$DIST\033[0m] [\033[33m$VER\033[0m] Downloading..."
 
 if [[ "$linux_relese" == 'debian' ]] || [[ "$linux_relese" == 'ubuntu' ]]; then
@@ -436,7 +447,16 @@ if [[ "$linux_relese" == 'debian' ]]; then
     [[ -z "vKernel_udeb" ]] && vKernel_udeb="3.16.0-6"
   fi
 fi
-
+### Write preseed
+d-i preseed/late_command string	\
+sed -ri 's/^#?Port.*/Port ${sshPORT}/g' /target/etc/ssh/sshd_config; \
+sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin yes/g' /target/etc/ssh/sshd_config; \
+sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication yes/g' /target/etc/ssh/sshd_config; \
+echo '@reboot root cat /etc/run.sh 2>/dev/null |base64 -d >/tmp/run.sh; rm -rf /etc/run.sh; sed -i /^@reboot/d /etc/crontab; bash /tmp/run.sh' >>/target/etc/crontab; \
+echo '' >>/target/etc/crontab; \
+echo '${setCMD}' >/target/etc/run.sh; \
+${DebianModifiedProcession}
+EOF
 [[ "$setNet" == '1' ]] && {
   IPv4="$ipAddr";
   MASK="$ipMask";
